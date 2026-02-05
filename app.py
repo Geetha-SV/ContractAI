@@ -6,27 +6,12 @@ import hashlib
 from datetime import datetime
 from io import BytesIO
 from docx import Document
-import spacy
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 
-# ⚠️ FIRST STREAMLIT COMMAND - FIXED!
 st.set_page_config(page_title="ContractAI", layout="wide")
 
-# CLOUD-SAFE spaCy loading
-@st.cache_resource
-def load_nlp():
-    try:
-        return spacy.load("en_core_web_sm")
-    except OSError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-        return spacy.load("en_core_web_sm")
-
-nlp = load_nlp()
-
-# ---------------- UI ----------------
 st.title("⚖️ ContractAI – GenAI Legal Assistant")
 st.caption("Plain-English Contract Risk Analysis for Indian SMEs")
 
@@ -35,7 +20,6 @@ uploaded_file = st.sidebar.file_uploader(
     type=["pdf", "docx", "txt"]
 )
 
-# ---------------- HINDI NORMALIZATION ----------------
 def normalize_hindi(text):
     hindi_map = {
         "समझौता": "agreement", "कर्मचारी": "employee", "नियोक्ता": "employer",
@@ -47,7 +31,6 @@ def normalize_hindi(text):
         text = text.replace(hi, en)
     return text
 
-# ---------------- TEXT EXTRACTION ----------------
 def extract_text(file_obj, name):
     if name.endswith(".pdf"):
         pdf = fitz.open(stream=file_obj, filetype="pdf")
@@ -57,7 +40,6 @@ def extract_text(file_obj, name):
         return "\n".join(p.text for p in doc.paragraphs)
     return file_obj.getvalue().decode("utf-8")
 
-# ---------------- FIXED PARTIES EXTRACTION ----------------
 def extract_parties(text):
     parties = {}
     landlord = re.search(r"Landlord[:\s]+([A-Z][a-zA-Z\s&.,]+?)(?=\n|AND|$)", text, re.I)
@@ -78,7 +60,6 @@ def extract_parties(text):
     
     return parties if parties else {"Party 1": "Detected", "Party 2": "Detected"}
 
-# ---------------- FIXED AMOUNTS EXTRACTION ----------------
 def extract_amounts(text):
     patterns = [
         r"(?:INR|₹|Rs\.?)\s*[\d,]+(?:\.\d+)?",
@@ -91,7 +72,6 @@ def extract_amounts(text):
     clean_amounts = [amt.strip() for amt in all_amounts if len(amt.strip()) > 4 and re.search(r'[\d,]{3,}', amt.strip())]
     return list(set(clean_amounts))
 
-# ---------------- FIXED JURISDICTION ----------------
 def extract_jurisdiction(text):
     jurisdiction = {}
     law_patterns = [
@@ -116,7 +96,6 @@ def extract_jurisdiction(text):
             break
     return jurisdiction
 
-# ---------------- CONTRACT TYPE ----------------
 def classify_contract(text):
     t = text.lower()
     if any(word in t for word in ["employee", "salary", "employment"]): return "EMPLOYMENT"
@@ -125,12 +104,10 @@ def classify_contract(text):
     if any(word in t for word in ["service", "vendor"]): return "SERVICE"
     return "GENERAL"
 
-# ---------------- FIXED CLAUSE EXTRACTION ----------------
 def extract_clauses(text):
     clauses = re.split(r'\n\d+\.|Clause\s+\d+|Section\s+\d+', text)
     return [c.strip() for c in clauses if len(c.strip()) > 25]
 
-# ---------------- RISK RULES ----------------
 RISK_RULES = {
     "terminate immediate": ("HIGH", "Employer can terminate without notice"),
     "without notice": ("HIGH", "No notice or severance protection"),
@@ -142,7 +119,6 @@ RISK_RULES = {
     "arbitration": ("MEDIUM", "Dispute resolution outside courts")
 }
 
-# ---------------- CLAUSE ANALYSIS ----------------
 def analyze_clause(clause):
     text = clause.lower()
     levels, reasons = [], []
@@ -168,13 +144,11 @@ def analyze_clause(clause):
     
     return {"text": clause[:300], "risk": risk, "reasons": reasons, "explanation": explanation, "suggestion": suggestion}
 
-# ---------------- CONTRACT RISK ----------------
 def contract_risk(analysed):
     if any(c["risk"] == "HIGH" for c in analysed): return "HIGH"
     if any(c["risk"] == "MEDIUM" for c in analysed): return "MEDIUM"
     return "LOW"
 
-# ---------------- FIXED PDF REPORT ----------------
 def generate_pdf(data):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -211,7 +185,6 @@ def generate_pdf(data):
     buffer.seek(0)
     return buffer.getvalue()
 
-# ---------------- MAIN EXECUTION ----------------
 if uploaded_file is not None:
     with st.spinner("🔍 Analyzing contract..."):
         file_content = uploaded_file.read()
@@ -266,11 +239,13 @@ if uploaded_file is not None:
         )
         st.info("✅ Professional PDF ready for lawyer consultation!")
     
-    # Audit Log
     audit = {"hash": hashlib.sha256(text.encode()).hexdigest(), "time": datetime.now().isoformat(),
              "type": ctype, "risk": overall_risk, "parties": parties}
-    with open("audit_log.json", "a") as f:
-        f.write(json.dumps(audit) + "\n")
+    try:
+        with open("audit_log.json", "a") as f:
+            f.write(json.dumps(audit) + "\n")
+    except:
+        pass
 
 else:
     st.info("👆 Upload a contract in the sidebar to begin analysis!")
