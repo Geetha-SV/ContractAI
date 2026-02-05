@@ -7,30 +7,22 @@ from datetime import datetime
 from io import BytesIO
 from docx import Document
 import spacy
-import spacy.cli 
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 
-pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
-spacy.cli.download("en_core_web_sm")  # <--- download before loading
-nlp = spacy.load("en_core_web_sm")
-# ---------------- CONFIG ----------------
-st.set_page_config(
-    page_title="ContractAI – Legal Assistant",
-    page_icon="⚖️",
-    layout="wide"
-)
+# ⚠️ FIRST STREAMLIT COMMAND - FIXED!
+st.set_page_config(page_title="ContractAI", layout="wide")
 
+# CLOUD-SAFE spaCy loading
 @st.cache_resource
 def load_nlp():
     try:
         return spacy.load("en_core_web_sm")
-    except Exception:
-        st.error("spaCy language model could not be loaded.")
-        st.stop()
+    except OSError:
+        import subprocess, sys
+        subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+        return spacy.load("en_core_web_sm")
 
 nlp = load_nlp()
 
@@ -46,17 +38,10 @@ uploaded_file = st.sidebar.file_uploader(
 # ---------------- HINDI NORMALIZATION ----------------
 def normalize_hindi(text):
     hindi_map = {
-        "समझौता": "agreement",
-        "कर्मचारी": "employee", 
-        "नियोक्ता": "employer",
-        "वेतन": "salary",
-        "समाप्ति": "termination",
-        "भुगतान": "payment",
-        "कानून": "law",
-        "न्यायालय": "court",
-        "गोपनीय": "confidential",
-        "क्षतिपूर्ति": "indemnity",
-        "प्रतिस्पर्धा": "non compete",
+        "समझौता": "agreement", "कर्मचारी": "employee", "नियोक्ता": "employer",
+        "वेतन": "salary", "समाप्ति": "termination", "भुगतान": "payment",
+        "कानून": "law", "न्यायालय": "court", "गोपनीय": "confidential",
+        "क्षतिपूर्ति": "indemnity", "प्रतिस्पर्धा": "non compete",
     }
     for hi, en in hindi_map.items():
         text = text.replace(hi, en)
@@ -72,19 +57,15 @@ def extract_text(file_obj, name):
         return "\n".join(p.text for p in doc.paragraphs)
     return file_obj.getvalue().decode("utf-8")
 
-# ---------------- UNIVERSAL PARTIES EXTRACTION ----------------
+# ---------------- FIXED PARTIES EXTRACTION ----------------
 def extract_parties(text):
     parties = {}
-
     landlord = re.search(r"Landlord[:\s]+([A-Z][a-zA-Z\s&.,]+?)(?=\n|AND|$)", text, re.I)
     tenant = re.search(r"Tenant[:\s]+([A-Z][a-zA-Z\s&.,]+?)(?=\n|$)", text, re.I)
     
-    if landlord:
-        parties["Landlord"] = landlord.group(1).strip()
-    if tenant:
-        parties["Tenant"] = tenant.group(1).strip()
+    if landlord: parties["Landlord"] = landlord.group(1).strip()
+    if tenant: parties["Tenant"] = tenant.group(1).strip()
     
-    # Fallback: BETWEEN pattern
     if not parties:
         between_match = re.search(r"BETWEEN\s+(.+?)(?:AND|\n{2,})", text, re.I | re.DOTALL)
         if between_match:
@@ -97,35 +78,24 @@ def extract_parties(text):
     
     return parties if parties else {"Party 1": "Detected", "Party 2": "Detected"}
 
-
-# ---------------- UNIVERSAL AMOUNTS EXTRACTION ----------------
+# ---------------- FIXED AMOUNTS EXTRACTION ----------------
 def extract_amounts(text):
-    """Catches ALL Indian currency formats - CLEAN output only"""
     patterns = [
-        r"(?:INR|₹|Rs\.?)\s*[\d,]+(?:\.\d+)?",  # INR 6,00,000, ₹50,000, Rs. 1,50,000
-        r"\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:Lakhs?|Crores?)",  # 1,00,000 Lakhs
+        r"(?:INR|₹|Rs\.?)\s*[\d,]+(?:\.\d+)?",
+        r"\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:Lakhs?|Crores?)",
         r"(?:salary|rent|payment|amount|deposit)\s+of\s+(?:INR|₹|Rs\.?)?[\d,]+"
     ]
-    
     all_amounts = []
     for pattern in patterns:
         all_amounts.extend(re.findall(pattern, text, re.I))
-    clean_amounts = []
-    for amt in all_amounts:
-        amt = amt.strip()
-        if len(amt) > 4 and re.search(r'[\d,]{3,}', amt):
-            clean_amounts.append(amt)
-    
+    clean_amounts = [amt.strip() for amt in all_amounts if len(amt.strip()) > 4 and re.search(r'[\d,]{3,}', amt.strip())]
     return list(set(clean_amounts))
 
-
-# ---------------- UNIVERSAL JURISDICTION ----------------
+# ---------------- FIXED JURISDICTION ----------------
 def extract_jurisdiction(text):
     jurisdiction = {}
-    
-    # Governing Law
     law_patterns = [
-        r"governed by the laws? of\s+([A-Za-z\s]+?)(?=\,|;|$)",
+        r"governed by the laws? of\s+([A-Za-z\s]+?)(?=,|;| $)",
         r"laws? of\s+([A-Za-z\s]+?)(?=governing|$)"
     ]
     for pattern in law_patterns:
@@ -134,7 +104,6 @@ def extract_jurisdiction(text):
             jurisdiction["Governing Law"] = match.group(1).strip()
             break
     
-    # Jurisdiction
     court_patterns = [
         r"courts?\s+(?:at|in|of)\s+([A-Za-z\s]+?)(?:\s+shall|$)",
         r"exclusive jurisdiction.*?([A-Za-z\s]+)",
@@ -145,23 +114,18 @@ def extract_jurisdiction(text):
         if match:
             jurisdiction["Jurisdiction"] = match.group(1).strip()
             break
-    
     return jurisdiction
 
 # ---------------- CONTRACT TYPE ----------------
 def classify_contract(text):
     t = text.lower()
-    if any(word in t for word in ["employee", "salary", "employment"]):
-        return "EMPLOYMENT"
-    if any(word in t for word in ["lease", "rent", "tenant", "landlord"]):
-        return "LEASE"
-    if any(word in t for word in ["partner", "partnership"]):
-        return "PARTNERSHIP"
-    if any(word in t for word in ["service", "vendor"]):
-        return "SERVICE"
+    if any(word in t for word in ["employee", "salary", "employment"]): return "EMPLOYMENT"
+    if any(word in t for word in ["lease", "rent", "tenant", "landlord"]): return "LEASE"
+    if any(word in t for word in ["partner", "partnership"]): return "PARTNERSHIP"
+    if any(word in t for word in ["service", "vendor"]): return "SERVICE"
     return "GENERAL"
 
-# ---------------- CLAUSE EXTRACTION ----------------
+# ---------------- FIXED CLAUSE EXTRACTION ----------------
 def extract_clauses(text):
     clauses = re.split(r'\n\d+\.|Clause\s+\d+|Section\s+\d+', text)
     return [c.strip() for c in clauses if len(c.strip()) > 25]
@@ -181,27 +145,17 @@ RISK_RULES = {
 # ---------------- CLAUSE ANALYSIS ----------------
 def analyze_clause(clause):
     text = clause.lower()
-    levels = []
-    reasons = []
-    
+    levels, reasons = [], []
     for term, (level, reason) in RISK_RULES.items():
         if term in text:
             levels.append(level)
             reasons.append(reason)
     
-    if "HIGH" in levels:
-        risk = "HIGH"
-    elif "MEDIUM" in levels:
-        risk = "MEDIUM"
-    else:
-        risk = "LOW"
-    
+    risk = "HIGH" if "HIGH" in levels else "MEDIUM" if "MEDIUM" in levels else "LOW"
     explanation = (
         "This clause significantly disadvantages one party and may lead to legal/financial harm."
-        if risk == "HIGH"
-        else "This clause creates some imbalance or future uncertainty."
-        if risk == "MEDIUM"
-        else "This clause is generally standard and low risk."
+        if risk == "HIGH" else "This clause creates some imbalance or future uncertainty."
+        if risk == "MEDIUM" else "This clause is generally standard and low risk."
     )
     
     suggestion = None
@@ -211,36 +165,20 @@ def analyze_clause(clause):
         suggestion = "Limit to 6 months and specific competitors only."
     elif risk == "HIGH" and "perpetual" in text:
         suggestion = "Restrict to 2-3 years post-termination."
-
     
-    return {
-        "text": clause[:300],
-        "risk": risk,
-        "reasons": reasons,
-        "explanation": explanation,
-        "suggestion": suggestion
-    }
+    return {"text": clause[:300], "risk": risk, "reasons": reasons, "explanation": explanation, "suggestion": suggestion}
 
 # ---------------- CONTRACT RISK ----------------
 def contract_risk(analysed):
-    # If even ONE clause is HIGH → overall HIGH
-    if any(c["risk"] == "HIGH" for c in analysed):
-        return "HIGH"
-
-    # If at least ONE clause is MEDIUM → overall MEDIUM
-    if any(c["risk"] == "MEDIUM" for c in analysed):
-        return "MEDIUM"
-
+    if any(c["risk"] == "HIGH" for c in analysed): return "HIGH"
+    if any(c["risk"] == "MEDIUM" for c in analysed): return "MEDIUM"
     return "LOW"
 
-# ---------------- PDF REPORT ----------------
+# ---------------- FIXED PDF REPORT ----------------
 def generate_pdf(data):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
-
     styles = getSampleStyleSheet()
-    for style in styles.byName.values():
-        style.fontName = 'HeiseiMin-W3'
     story = []
     
     story.append(Paragraph("ContractAI – Detailed Legal Analysis Report", styles["Title"]))
@@ -264,7 +202,7 @@ def generate_pdf(data):
     for i, c in enumerate(data["clauses"], 1):
         story.append(Spacer(1, 8))
         story.append(Paragraph(f"<b>Clause {i} – Risk: {c['risk']}</b>", styles["Normal"]))
-        story.append(Paragraph(c["text"], styles["Normal"]))
+        story.append(Paragraph(c["text"][:200] + "...", styles["Normal"]))
         story.append(Paragraph(f"Explanation: {c['explanation']}", styles["Normal"]))
         if c["suggestion"]:
             story.append(Paragraph(f"Suggested Change: {c['suggestion']}", styles["Normal"]))
@@ -279,11 +217,9 @@ if uploaded_file is not None:
         file_content = uploaded_file.read()
         text = extract_text(BytesIO(file_content), uploaded_file.name)
         
-        # Hindi normalization
         if re.search(r'[\u0900-\u097F]', text):
             text = normalize_hindi(text)
         
-        # Analysis
         parties = extract_parties(text)
         amounts = extract_amounts(text)
         jurisdiction = extract_jurisdiction(text)
@@ -292,7 +228,6 @@ if uploaded_file is not None:
         overall_risk = contract_risk(analysed)
         ctype = classify_contract(text)
     
-    # Results Tabs
     tab1, tab2, tab3 = st.tabs(["📘 Summary", "⚠️ Clause Analysis", "📄 PDF Export"])
     
     with tab1:
@@ -306,7 +241,6 @@ if uploaded_file is not None:
         st.subheader("💰 Amounts")
         clean_display = [a for a in amounts if len(a) > 4]
         st.success(f"Found {len(clean_display)} amounts: {', '.join(clean_display)}")
-
         
         st.subheader("⚖️ Jurisdiction")
         st.json(jurisdiction)
@@ -324,30 +258,17 @@ if uploaded_file is not None:
     
     with tab3:
         pdf = generate_pdf({
-            "type": ctype,
-            "risk": overall_risk,
-            "parties": parties,
-            "amounts": amounts,
-            "jurisdiction": str(jurisdiction),
-            "clauses": analysed
+            "type": ctype, "risk": overall_risk, "parties": parties,
+            "amounts": amounts, "jurisdiction": str(jurisdiction), "clauses": analysed
         })
         st.download_button(
-            "📥 Download Detailed PDF Report",
-            pdf,
-            "contract_analysis.pdf",
-            "application/pdf"
+            "📥 Download Detailed PDF Report", pdf, "contract_analysis.pdf", "application/pdf"
         )
-        
         st.info("✅ Professional PDF ready for lawyer consultation!")
     
     # Audit Log
-    audit = {
-        "hash": hashlib.sha256(text.encode()).hexdigest(),
-        "time": datetime.now().isoformat(),
-        "type": ctype,
-        "risk": overall_risk,
-        "parties": parties
-    }
+    audit = {"hash": hashlib.sha256(text.encode()).hexdigest(), "time": datetime.now().isoformat(),
+             "type": ctype, "risk": overall_risk, "parties": parties}
     with open("audit_log.json", "a") as f:
         f.write(json.dumps(audit) + "\n")
 
@@ -355,9 +276,5 @@ else:
     st.info("👆 Upload a contract in the sidebar to begin analysis!")
     st.balloons()
 
-# Footer
 st.markdown("---")
 st.caption("GenAI Legal Assistant")
-
-
-
