@@ -7,6 +7,7 @@ from datetime import datetime
 from io import BytesIO
 from docx import Document
 import spacy
+import spacy.cli 
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -14,6 +15,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 
 pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+spacy.cli.download("en_core_web_sm")  # <--- download before loading
+nlp = spacy.load("en_core_web_sm")
 # ---------------- CONFIG ----------------
 st.set_page_config(
     page_title="ContractAI – Legal Assistant",
@@ -355,5 +358,6 @@ else:
 # Footer
 st.markdown("---")
 st.caption("GenAI Legal Assistant")
+
 
 
