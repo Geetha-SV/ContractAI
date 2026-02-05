@@ -23,7 +23,11 @@ st.set_page_config(
 
 @st.cache_resource
 def load_nlp():
-    return spacy.load("en_core_web_sm")
+    try:
+        return spacy.load("en_core_web_sm")
+    except Exception:
+        st.error("spaCy language model could not be loaded.")
+        st.stop()
 
 nlp = load_nlp()
 
@@ -58,7 +62,7 @@ def normalize_hindi(text):
 # ---------------- TEXT EXTRACTION ----------------
 def extract_text(file_obj, name):
     if name.endswith(".pdf"):
-        pdf = fitz.open(stream=file_obj)
+        pdf = fitz.open(stream=file_obj, filetype="pdf")
         return " ".join(page.get_text() for page in pdf)
     elif name.endswith(".docx"):
         doc = Document(file_obj)
@@ -351,3 +355,4 @@ else:
 # Footer
 st.markdown("---")
 st.caption("GenAI Legal Assistant")
+
