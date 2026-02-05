@@ -1,5 +1,5 @@
 import streamlit as st
-import fitz
+import pymupdf as fitz
 import re
 import json
 import hashlib
@@ -355,4 +355,5 @@ else:
 # Footer
 st.markdown("---")
 st.caption("GenAI Legal Assistant")
+
 
