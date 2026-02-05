@@ -4,3 +4,6 @@ nltk
 reportlab
 python-docx
 PyPDF2
+PyMuPDF
+
+
