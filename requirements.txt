@@ -1,7 +1,9 @@
-streamlit
-spacy==3.7.2
 thinc==8.2.2
 nltk
-PyMuPDF==1.23.26
-python-docx
-reportlab
+streamlit==1.38.0
+spacy==3.8.1
+PyMuPDF==1.24.10
+python-docx==1.1.2
+reportlab==4.2.2
+
+
