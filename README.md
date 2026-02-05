@@ -51,5 +51,10 @@ streamlit run app.py
 
 
 ## Screenshots
+<img width="1353" height="619" alt="Image" src="https://github.com/user-attachments/assets/9d595dfc-06a7-4149-ae33-100b10f4e023" />
+
 ### Contract Upload & Summary
+<img width="1352" height="638" alt="Image" src="https://github.com/user-attachments/assets/dab6bf3e-ab2c-452e-bbe9-84e4e97611dd" />
 ### Clause-by-Clause Risk Analysis
+<img width="1355" height="630" alt="Image" src="https://github.com/user-attachments/assets/4b3d4046-25ca-4d53-9d7e-90f9cbc3ecc1" />
+
